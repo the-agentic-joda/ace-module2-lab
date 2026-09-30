@@ -21,6 +21,12 @@ function favicon () {
   return utils.extractFilename(config.get('application.favicon'))
 }
 
+function escapePug (str?: string) {
+  if (!str) return str
+  const escaped = str.replace(/(?<!\\)([#!]{|#\[)/g, '\\$1')
+  return escaped.startsWith('\\') ? escaped : '\\' + escaped
+}
+
 export function getUserProfile () {
   return async (req: Request, res: Response, next: NextFunction) => {
     let template: string
@@ -51,6 +57,10 @@ export function getUserProfile () {
 
     let username = user.username
 
+    if (username) {
+      username = username.replace(/[\r\n\u2028\u2029]+/g, '')
+    }
+
     if (username?.match(/#{(.*)}/) !== null && utils.isChallengeEnabled(challenges.usernameXssChallenge)) {
       req.app.locals.abused_ssti_bug = true
       const code = username?.substring(2, username.length - 1)
@@ -74,11 +84,14 @@ export function getUserProfile () {
           throw new Error('Unsafe code execution blocked')
         }
         username = eval(code) // eslint-disable-line no-eval
+        if (typeof username === 'string') {
+          username = username.replace(/[\r\n\u2028\u2029]+/g, '').replace(/(?<!\\)([#!]{|#\[)/g, '\\$1')
+        }
       } catch (err) {
-        username = '\\' + username
+        username = escapePug(username)
       }
     } else {
-      username = '\\' + username
+      username = escapePug(username)
     }
 
     const themeKey = config.get<string>('application.theme') as keyof typeof themes
